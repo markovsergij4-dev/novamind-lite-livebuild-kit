@@ -20,30 +20,38 @@ jobs:
             ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
             dosfstools mtools
 
-      - name: Build ISO (force Debian bookworm + fix security suite)
+      - name: Build ISO (Debian bookworm, pinned sources, no trailing slashes)
         run: |
+          set -e
           # cleanup
           sudo rm -rf config/* cache/* chroot/* binary/* || true
           sudo lb clean || true
 
-          # ensure our custom security source is present
+          # Пінуємо APT-джерела всередині chroot
           mkdir -p config/archives
-          echo 'deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware' | sudo tee config/archives/security.list.chroot >/dev/null
+          cat <<'EOF' | sudo tee config/archives/debian.list.chroot >/dev/null
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+EOF
+          echo 'deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware' \
+            | sudo tee config/archives/security.list.chroot >/dev/null
 
-          # configure DEBIAN (disable default security to avoid wrong "bookworm/updates")
+          # Ключовий пакет
+          echo 'debian-archive-keyring' | sudo tee config/bootstrap-include >/dev/null
+
+          # Конфігурація live-build (без завершальних слешів у дзеркалах)
           sudo lb config \
             --mode debian \
             --distribution bookworm \
             --archive-areas "main contrib non-free non-free-firmware" \
             --security false \
-            --mirror-bootstrap http://deb.debian.org/debian/ \
-            --mirror-chroot    http://deb.debian.org/debian/ \
-            --mirror-binary    http://deb.debian.org/debian/ \
-            --mirror-chroot-security http://security.debian.org/debian-security/ \
-            --mirror-binary-security http://security.debian.org/debian-security/
-
-          # use correct keyring
-          echo 'debian-archive-keyring' | sudo tee config/bootstrap-include >/dev/null
+            --mirror-bootstrap http://deb.debian.org/debian \
+            --mirror-chroot    http://deb.debian.org/debian \
+            --mirror-binary    http://deb.debian.org/debian \
+            --mirror-chroot-security http://security.debian.org/debian-security \
+            --mirror-binary-security http://security.debian.org/debian-security \
+            --linux-flavours amd64 \
+            --linux-packages "linux-image"
 
           sudo lb build
           ls -lh
