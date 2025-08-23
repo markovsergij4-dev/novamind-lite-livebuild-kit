@@ -30,7 +30,7 @@ jobs:
             ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
             dosfstools mtools debian-archive-keyring
 
-      - name: Build ISO (Debian bookworm, pinned sources, no indices)
+      - name: Build ISO (Debian bookworm, pinned sources, disable Contents)
         run: |
           set -Eeuo pipefail
           trap 'echo "::error file=Build ISO::failed on line $LINENO"' ERR
@@ -39,12 +39,18 @@ jobs:
           sudo rm -rf config/apt config/archives/*.chroot cache chroot binary || true
           sudo lb clean || true
 
-          # APT robustness inside chroot
+          # APT robustness + disable Contents indexes in chroot
           sudo install -d -m 0755 config/apt
-          echo 'Acquire::Retries "5";'              | sudo tee config/apt/apt.conf.chroot >/dev/null
-          echo 'Acquire::http::Pipeline-Depth "0";' | sudo tee -a config/apt/apt.conf.chroot >/dev/null
+          {
+            echo 'Acquire::Retries "5";'
+            echo 'Acquire::http::Pipeline-Depth "0";'
+            echo 'Acquire::Languages "none";'
+            echo 'Acquire::GzipIndexes "false";'
+            echo 'Acquire::CompressionTypes::Index:: "xz";'
+            echo 'Acquire::IndexTargets::deb::Contents "false";'
+          } | sudo tee config/apt/apt.conf.chroot >/dev/null
 
-          # Pin Debian sources explicitly (без heredoc)
+          # Pin Debian sources explicitly
           sudo install -d -m 0755 config/archives
           sudo bash -c 'printf "%s\n" \
             "deb https://deb.debian.org/debian bookworm main contrib non-free non-free-firmware" \
@@ -56,7 +62,7 @@ jobs:
           # Keyring for debootstrap trust
           echo 'debian-archive-keyring' | sudo tee config/bootstrap-include >/dev/null
 
-          # Configure live-build (disable auto-security; no trailing slashes; disable apt indices)
+          # Configure live-build (no trailing slashes; disable auto-security; disable apt indices)
           sudo lb config \
             --mode debian \
             --distribution bookworm \
@@ -73,6 +79,9 @@ jobs:
 
           echo "==== archives in chroot ===="
           sudo find config/archives -maxdepth 1 -type f -name '*.chroot' -print -exec cat {} \;
+
+          echo "==== apt.conf.chroot ===="
+          sudo cat config/apt/apt.conf.chroot || true
 
           sudo lb build
           ls -lh
