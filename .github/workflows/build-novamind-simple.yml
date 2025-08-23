@@ -41,15 +41,15 @@ jobs:
 
           # APT robustness inside chroot
           sudo install -d -m 0755 config/apt
-          echo 'Acquire::Retries "5";'            | sudo tee config/apt/apt.conf.chroot >/dev/null
-          echo 'Acquire::http::Pipeline-Depth "0";' | sudo tee -a config/apt/apt.conf.chroot >/dev/null
+          echo 'Acquire::Retries "5";'               | sudo tee config/apt/apt.conf.chroot >/dev/null
+          echo 'Acquire::http::Pipeline-Depth "0";'  | sudo tee -a config/apt/apt.conf.chroot >/dev/null
 
-          # Pin Debian sources explicitly
+          # Pin Debian sources explicitly (без heredoc)
           sudo install -d -m 0755 config/archives
-          sudo bash -c 'cat > config/archives/debian.list.chroot << "EOL"
-deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-EOL'
+          sudo bash -c 'printf "%s\n" \
+            "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware" \
+            "deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" \
+            > config/archives/debian.list.chroot'
           echo 'deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware' \
             | sudo tee config/archives/security.list.chroot >/dev/null
 
@@ -70,8 +70,7 @@ EOL'
             --linux-flavours amd64 \
             --linux-packages "linux-image"
 
-          # sanity print (бачимо, які джерела зібрались)
-          echo "==== config/archives ===="
+          echo "==== archives in chroot ===="
           sudo find config/archives -maxdepth 1 -type f -name '*.chroot' -print -exec cat {} \;
 
           sudo lb build
