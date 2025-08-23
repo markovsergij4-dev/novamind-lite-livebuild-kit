@@ -30,7 +30,7 @@ jobs:
             ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
             dosfstools mtools debian-archive-keyring
 
-      - name: Build ISO (Debian bookworm, pinned sources)
+      - name: Build ISO (Debian bookworm, pinned sources, no indices)
         run: |
           set -Eeuo pipefail
           trap 'echo "::error file=Build ISO::failed on line $LINENO"' ERR
@@ -41,34 +41,35 @@ jobs:
 
           # APT robustness inside chroot
           sudo install -d -m 0755 config/apt
-          echo 'Acquire::Retries "5";'               | sudo tee config/apt/apt.conf.chroot >/dev/null
-          echo 'Acquire::http::Pipeline-Depth "0";'  | sudo tee -a config/apt/apt.conf.chroot >/dev/null
+          echo 'Acquire::Retries "5";'              | sudo tee config/apt/apt.conf.chroot >/dev/null
+          echo 'Acquire::http::Pipeline-Depth "0";' | sudo tee -a config/apt/apt.conf.chroot >/dev/null
 
           # Pin Debian sources explicitly (без heredoc)
           sudo install -d -m 0755 config/archives
           sudo bash -c 'printf "%s\n" \
-            "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware" \
-            "deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" \
+            "deb https://deb.debian.org/debian bookworm main contrib non-free non-free-firmware" \
+            "deb https://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" \
             > config/archives/debian.list.chroot'
-          echo 'deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware' \
+          echo 'deb https://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware' \
             | sudo tee config/archives/security.list.chroot >/dev/null
 
           # Keyring for debootstrap trust
           echo 'debian-archive-keyring' | sudo tee config/bootstrap-include >/dev/null
 
-          # Configure live-build (no trailing slashes, disable auto-security)
+          # Configure live-build (disable auto-security; no trailing slashes; disable apt indices)
           sudo lb config \
             --mode debian \
             --distribution bookworm \
             --archive-areas "main contrib non-free non-free-firmware" \
             --security false \
-            --mirror-bootstrap http://deb.debian.org/debian \
-            --mirror-chroot    http://deb.debian.org/debian \
-            --mirror-binary    http://deb.debian.org/debian \
-            --mirror-chroot-security http://security.debian.org/debian-security \
-            --mirror-binary-security http://security.debian.org/debian-security \
+            --mirror-bootstrap https://deb.debian.org/debian \
+            --mirror-chroot    https://deb.debian.org/debian \
+            --mirror-binary    https://deb.debian.org/debian \
+            --mirror-chroot-security https://security.debian.org/debian-security \
+            --mirror-binary-security https://security.debian.org/debian-security \
             --linux-flavours amd64 \
-            --linux-packages "linux-image"
+            --linux-packages "linux-image" \
+            --apt-indices false
 
           echo "==== archives in chroot ===="
           sudo find config/archives -maxdepth 1 -type f -name '*.chroot' -print -exec cat {} \;
