@@ -12,34 +12,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            live-build xorriso syslinux-common squashfs-tools debootstrap \
-            ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
-            dosfstools mtools
-
-      - name: Build ISO (Debian bookworm, pinned sources, no trailing slashes)
+      - name: Preflight (structure check)
         run: |
           set -e
-          # cleanup
-          sudo rm -rf config/* cache/* chroot/* binary/* || true
+          test -f auto/config
+          test -d config/package-lists
+          test -f config/package-lists/core.list.chroot
+          echo "[OK] repo structure looks good"
+
+      - name: Install deps (with retries)
+        run: |
+          set -e
+          retry() { n=0; until "$@"; do n=$((n+1)); [ $n -ge 5 ] && exit 1; echo "retry $n/5..."; sleep $((n*5)); done; }
+          retry sudo apt-get update
+          retry sudo apt-get install -y \
+            live-build xorriso syslinux-common squashfs-tools debootstrap \
+            ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
+            dosfstools mtools debian-archive-keyring
+
+      - name: Build ISO (Debian bookworm, pinned sources)
+        run: |
+          set -Eeuo pipefail
+          trap 'echo "::error file=Build ISO::failed on line $LINENO"' ERR
+
+          # clean
+          sudo rm -rf config/apt config/archives/*.chroot cache chroot binary || true
           sudo lb clean || true
 
-          # Пінуємо APT-джерела всередині chroot
-          mkdir -p config/archives
-          cat <<'EOF' | sudo tee config/archives/debian.list.chroot >/dev/null
+          # APT robustness inside chroot
+          sudo install -d -m 0755 config/apt
+          echo 'Acquire::Retries "5";'            | sudo tee config/apt/apt.conf.chroot >/dev/null
+          echo 'Acquire::http::Pipeline-Depth "0";' | sudo tee -a config/apt/apt.conf.chroot >/dev/null
+
+          # Pin Debian sources explicitly
+          sudo install -d -m 0755 config/archives
+          sudo bash -c 'cat > config/archives/debian.list.chroot << "EOL"
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-EOF
+EOL'
           echo 'deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware' \
             | sudo tee config/archives/security.list.chroot >/dev/null
 
-          # Ключовий пакет
+          # Keyring for debootstrap trust
           echo 'debian-archive-keyring' | sudo tee config/bootstrap-include >/dev/null
 
-          # Конфігурація live-build (без завершальних слешів у дзеркалах)
+          # Configure live-build (no trailing slashes, disable auto-security)
           sudo lb config \
             --mode debian \
             --distribution bookworm \
@@ -53,17 +70,26 @@ EOF
             --linux-flavours amd64 \
             --linux-packages "linux-image"
 
+          # sanity print (бачимо, які джерела зібрались)
+          echo "==== config/archives ===="
+          sudo find config/archives -maxdepth 1 -type f -name '*.chroot' -print -exec cat {} \;
+
           sudo lb build
           ls -lh
 
       - name: Collect ISO
         run: |
+          set -e
           ISO=$(ls *.iso 2>/dev/null || ls live-image-*.iso 2>/dev/null || ls */*.iso 2>/dev/null)
+          [ -n "$ISO" ]
           cp "$ISO" novamind-lite-os-live-amd64.iso
-          ls -lh novamind-lite-os-live-amd64.iso
+          sha256sum novamind-lite-os-live-amd64.iso > novamind-lite-os-live-amd64.sha256
+          ls -lh novamind-lite-os-live-amd64.iso novamind-lite-os-live-amd64.sha256
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: novamind-lite-os-live-amd64
-          path: novamind-lite-os-live-amd64.iso
+          path: |
+            novamind-lite-os-live-amd64.iso
+            novamind-lite-os-live-amd64.sha256
