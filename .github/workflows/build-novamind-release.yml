@@ -20,16 +20,29 @@ jobs:
             ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
             dosfstools mtools
 
-      - name: Build ISO (force bookworm)
+      - name: Build ISO (force Debian bookworm mode)
         run: |
+          # cleanup
           sudo rm -rf config/* cache/* chroot/* binary/* || true
           sudo lb clean || true
-          sudo lb config --distribution bookworm \
+
+          # configure DEBIAN (not Ubuntu)
+          sudo lb config \
+            --mode debian \
+            --distribution bookworm \
+            --archive-areas "main contrib non-free non-free-firmware" \
             --mirror-bootstrap http://deb.debian.org/debian/ \
-            --mirror-binary    http://deb.debian.org/debian/ \
             --mirror-chroot    http://deb.debian.org/debian/ \
+            --mirror-binary    http://deb.debian.org/debian/ \
             --mirror-chroot-security http://security.debian.org/debian-security/ \
             --mirror-binary-security http://security.debian.org/debian-security/
+
+          # make sure correct keyring is used inside chroot
+          echo 'debian-archive-keyring' | sudo tee config/bootstrap-include >/dev/null
+
+          # get rid of ubuntu components on the host (defensive)
+          sudo sed -i 's/restricted//g;s/universe//g;s/multiverse//g' /etc/apt/sources.list || true
+
           sudo lb build
           ls -lh
 
