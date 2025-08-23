@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+id -u user >/dev/null 2>&1 || useradd -m -s /bin/bash user || true
+adduser user sudo || true
+chown -R user:user /home/user 2>/dev/null || true
+chmod +x /usr/local/bin/ai_controller.py /usr/local/bin/nml-session-select.sh
