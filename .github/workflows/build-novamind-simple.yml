@@ -18,7 +18,8 @@ jobs:
           test -f auto/config
           test -d config/package-lists
           test -f config/package-lists/core.list.chroot
-          echo "[OK] repo structure looks good"
+          grep -q '^linux-image-amd64$' config/package-lists/core.list.chroot
+          echo "[OK] repo structure looks good and linux-image-amd64 present"
 
       - name: Install deps (with retries)
         run: |
@@ -30,7 +31,7 @@ jobs:
             ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
             dosfstools mtools debian-archive-keyring
 
-      - name: Build ISO (Debian bookworm, pinned sources, disable Contents)
+      - name: Build ISO (Debian bookworm, pinned sources, skip Contents)
         run: |
           set -Eeuo pipefail
           trap 'echo "::error file=Build ISO::failed on line $LINENO"' ERR
@@ -39,7 +40,7 @@ jobs:
           sudo rm -rf config/apt config/archives/*.chroot cache chroot binary || true
           sudo lb clean || true
 
-          # APT robustness + disable Contents indexes in chroot
+          # APT robustness + disable Contents inside chroot
           sudo install -d -m 0755 config/apt
           {
             echo 'Acquire::Retries "5";'
@@ -59,10 +60,13 @@ jobs:
           echo 'deb https://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware' \
             | sudo tee config/archives/security.list.chroot >/dev/null
 
-          # Keyring for debootstrap trust
+          # Ensure Debian keyring is included by debootstrap
           echo 'debian-archive-keyring' | sudo tee config/bootstrap-include >/dev/null
 
-          # Configure live-build (no trailing slashes; disable auto-security; disable apt indices)
+          # Configure live-build:
+          #  - disable auto-security (ми самі додаємо правильний suite)
+          #  - дзеркала без трейлінгових слешів
+          #  - ВАЖЛИВО: --linux-packages none → саме це відключає проблемний крок lb_chroot_linux-image
           sudo lb config \
             --mode debian \
             --distribution bookworm \
@@ -74,7 +78,7 @@ jobs:
             --mirror-chroot-security https://security.debian.org/debian-security \
             --mirror-binary-security https://security.debian.org/debian-security \
             --linux-flavours amd64 \
-            --linux-packages "linux-image" \
+            --linux-packages none \
             --apt-indices false
 
           echo "==== archives in chroot ===="
