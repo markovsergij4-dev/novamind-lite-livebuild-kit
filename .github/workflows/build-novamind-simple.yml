@@ -30,7 +30,13 @@ jobs:
             live-build xorriso squashfs-tools debootstrap \
             ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
             dosfstools mtools debian-archive-keyring \
-            syslinux-utils
+            syslinux-utils syslinux
+
+      - name: Verify isohybrid on host
+        run: |
+          set -e
+          which isohybrid || { echo "::error ::isohybrid not found after install"; exit 1; }
+          isohybrid -h | head -n 1 || true
 
       - name: Build ISO (Debian bookworm, pinned sources, GRUB iso-hybrid)
         run: |
