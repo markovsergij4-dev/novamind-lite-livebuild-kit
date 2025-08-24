@@ -29,7 +29,8 @@ jobs:
           retry sudo apt-get install -y \
             live-build xorriso squashfs-tools debootstrap \
             ca-certificates parted grub-pc-bin grub-efi-amd64-bin \
-            dosfstools mtools debian-archive-keyring
+            dosfstools mtools debian-archive-keyring \
+            syslinux-utils
 
       - name: Build ISO (Debian bookworm, pinned sources, GRUB iso-hybrid)
         run: |
